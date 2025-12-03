@@ -4,16 +4,11 @@
 */
 
 import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { RepoFileTree, Citation } from '../types';
+import { RepoFileTree, Citation, CodeAudit } from '../types';
 
 // Helper to ensure we always get the freshest key from the environment
 // immediately before a call.
 const getAiClient = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-export interface InfographicResult {
-    imageData: string | null;
-    citations: Citation[];
-}
 
 export async function generateInfographic(
   repoName: string, 
@@ -110,9 +105,80 @@ export async function generateInfographic(
   }
 }
 
+export async function generateArticleInfographic(
+  url: string,
+  style: string,
+  onProgress: (stage: string) => void,
+  language: string = "English"
+): Promise<{ imageData: string | null, citations: Citation[], summary: string }> {
+  const ai = getAiClient();
+  onProgress("CONNECTING TO SEARCH & GROUNDING");
+
+  const prompt = `
+  I need you to search for the content of this URL: ${url} using Google Search.
+  
+  TASK 1: Write a concise "Executive Brief" summary of the article/page content in ${language}.
+  
+  TASK 2: Generate a high-quality infographic image that visually represents the key points of the article.
+  
+  VISUAL STYLE FOR IMAGE: ${style}
+  - Make it information-dense but readable.
+  - Use a layout that flows logically.
+  - Text in the image must be in ${language}.
+  
+  Return both the text summary and the generated image.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-image-preview',
+      contents: {
+        parts: [{ text: prompt }],
+      },
+      config: {
+        tools: [{ googleSearch: {} }],
+      },
+    });
+
+    onProgress("PROCESSING RESULTS");
+
+    let imageData: string | null = null;
+    let summary = "";
+    const citations: Citation[] = [];
+
+    const candidates = response.candidates;
+    if (candidates && candidates.length > 0) {
+      const content = candidates[0].content;
+      if (content && content.parts) {
+        for (const part of content.parts) {
+          if (part.inlineData && part.inlineData.data) {
+            imageData = part.inlineData.data;
+          } else if (part.text) {
+            summary += part.text;
+          }
+        }
+      }
+      
+      const groundingChunks = candidates[0].groundingMetadata?.groundingChunks;
+      if (groundingChunks) {
+        groundingChunks.forEach((chunk: any) => {
+          if (chunk.web) {
+            citations.push({ uri: chunk.web.uri, title: chunk.web.title });
+          }
+        });
+      }
+    }
+
+    return { imageData, citations, summary };
+
+  } catch (error) {
+    console.error("Gemini article infographic generation failed:", error);
+    throw error;
+  }
+}
+
 export async function askRepoQuestion(question: string, infographicBase64: string, fileTree: RepoFileTree[]): Promise<string> {
   const ai = getAiClient();
-  // Provide context about the file structure to supplement the image
   const limitedTree = fileTree.slice(0, 300).map(f => f.path).join('\n');
   
   const prompt = `You are a senior software architect reviewing a project.
@@ -187,135 +253,6 @@ export async function askNodeSpecificQuestion(
   }
 }
 
-export async function generateArticleInfographic(
-  url: string, 
-  style: string, 
-  onProgress?: (stage: string) => void,
-  language: string = "English"
-): Promise<InfographicResult> {
-    const ai = getAiClient();
-    // PHASE 1: Content Understanding & Structural Breakdown (The "Planner")
-    if (onProgress) onProgress("RESEARCHING & ANALYZING CONTENT...");
-    
-    let structuralSummary = "";
-    let citations: Citation[] = [];
-
-    try {
-        const analysisPrompt = `You are an expert Information Designer. Your goal is to extract the essential structure from a web page to create a clear, educational infographic.
-
-        Analyze the content at this URL: ${url}
-        
-        TARGET LANGUAGE: ${language}.
-        
-        Provide a structured breakdown specifically designed for visual representation in ${language}:
-        1. INFOGRAPHIC HEADLINE: The core topic in 5 words or less (in ${language}).
-        2. KEY TAKEAWAYS: The 3 to 5 most important distinct points, steps, or facts (in ${language}). THESE WILL BE THE MAIN SECTIONS OF THE IMAGE.
-        3. SUPPORTING DATA: Any specific numbers, percentages, or very short quotes that add credibility.
-        4. VISUAL METAPHOR IDEA: Suggest ONE simple visual concept that best fits this content (e.g., "a roadmap with milestones", "a funnel", "three contrasting pillars", "a circular flowchart").
-        
-        Keep the output concise and focused purely on what should be ON the infographic. Ensure all content is in ${language}.`;
-
-        // Switch to 'gemini-3-pro-image-preview' for research phase as requested.
-        const analysisResponse = await ai.models.generateContent({
-            model: 'gemini-3-pro-image-preview',
-            contents: analysisPrompt,
-            config: {
-                tools: [{ googleSearch: {} }],
-                // Do NOT set responseMimeType or responseSchema when using tools
-            }
-        });
-        structuralSummary = analysisResponse.text || "";
-
-        // Extract citations from grounding metadata with Titles
-        const chunks = analysisResponse.candidates?.[0]?.groundingMetadata?.groundingChunks;
-        if (chunks) {
-            chunks.forEach((chunk: any) => {
-                if (chunk.web?.uri) {
-                    citations.push({
-                        uri: chunk.web.uri,
-                        title: chunk.web.title || "" // Default to empty, handle in UI
-                    });
-                }
-            });
-            // Deduplicate citations based on URI
-            const uniqueCitations = new Map();
-            citations.forEach(c => uniqueCitations.set(c.uri, c));
-            citations = Array.from(uniqueCitations.values());
-        }
-
-    } catch (e) {
-        console.warn("Content analysis failed, falling back to direct URL prompt", e);
-        structuralSummary = `Create an infographic about: ${url}. Translate text to ${language}.`;
-    }
-
-    // PHASE 2: Visual Synthesis (The "Artist")
-    if (onProgress) onProgress("DESIGNING & RENDERING INFOGRAPHIC...");
-
-    let styleGuidelines = "";
-    switch (style) {
-        case "Fun & Playful":
-            styleGuidelines = `STYLE: Fun, playful, vibrant 2D vector illustrations. Use bright colors, rounded shapes, and a friendly tone.`;
-            break;
-        case "Clean Minimalist":
-            styleGuidelines = `STYLE: Ultra-minimalist. Lots of whitespace, thin lines, limited color palette (1-2 accent colors max). Very sophisticated and airy.`;
-            break;
-        case "Dark Mode Tech":
-            styleGuidelines = `STYLE: Dark mode technical aesthetic. Dark slate/black background with bright, glowing accent colors (cyan, lime green) for data points.`;
-            break;
-        case "Modern Editorial":
-            styleGuidelines = `STYLE: Modern, flat vector illustration style. Clean, professional, and editorial (like a high-end tech magazine). Cohesive, mature color palette.`;
-            break;
-        default:
-            // Custom style logic
-             if (style && style !== "Custom") {
-                styleGuidelines = `STYLE: Custom User Style: "${style}".`;
-             } else {
-                styleGuidelines = `STYLE: Modern, flat vector illustration style. Clean, professional, and editorial (like a high-end tech magazine). Cohesive, mature color palette.`;
-             }
-            break;
-    }
-
-    const imagePrompt = `Create a professional, high-quality educational infographic based strictly on this structured content plan:
-
-    ${structuralSummary}
-
-    VISUAL DESIGN RULES:
-    - ${styleGuidelines}
-    - LANGUAGE: The text within the infographic MUST be written in ${language}.
-    - LAYOUT: MUST follow the "VISUAL METAPHOR IDEA" from the plan above if one was provided.
-    - TYPOGRAPHY: Clean, highly readable sans-serif fonts. The "INFOGRAPHIC HEADLINE" must be prominent at the top.
-    - CONTENT: Use the actual text from "KEY TAKEAWAYS" in the image. Do not use placeholder text like Lorem Ipsum.
-    - GOAL: The image must be informative and readable as a standalone graphic.
-    `;
-
-    try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-image-preview',
-            contents: {
-                parts: [{ text: imagePrompt }],
-            },
-            config: {
-                responseModalities: [Modality.IMAGE],
-            },
-        });
-
-        let imageData = null;
-        const parts = response.candidates?.[0]?.content?.parts;
-        if (parts) {
-            for (const part of parts) {
-                if (part.inlineData && part.inlineData.data) {
-                    imageData = part.inlineData.data;
-                    break;
-                }
-            }
-        }
-        return { imageData, citations };
-    } catch (error) {
-        console.error("Article infographic generation failed:", error);
-        throw error;
-    }
-}
-
 export async function editImageWithGemini(base64Data: string, mimeType: string, prompt: string): Promise<string | null> {
   const ai = getAiClient();
   try {
@@ -352,4 +289,108 @@ export async function editImageWithGemini(base64Data: string, mimeType: string, 
     console.error("Gemini image editing failed:", error);
     throw error;
   }
+}
+
+// --- Code X-Ray Features ---
+
+export async function generateCodeBlueprint(code: string): Promise<string | null> {
+  const ai = getAiClient();
+  // Truncate if insanely long
+  const snippet = code.slice(0, 2000);
+
+  const prompt = `
+  Generate a "Holographic Logic Blueprint" for this code snippet.
+  
+  VISUAL STYLE:
+  - Dark Mode Engineering Schematic (Navy Blue / Black Background).
+  - Glowing Cyan and White lines representing execution flow.
+  - Logic Nodes: Represent functions/classes as integrated circuit chips or flowchart nodes.
+  - Data Flow: Represent data as light streams connecting the nodes.
+  - Look: Highly technical, sci-fi "Iron Man JARVIS" interface style.
+  
+  CODE CONTEXT:
+  ${snippet}
+  
+  Focus on visually mapping the Logic Control Flow.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-image-preview',
+      contents: {
+        parts: [{ text: prompt }],
+      },
+      config: {
+        responseModalities: [Modality.IMAGE],
+      },
+    });
+
+    const parts = response.candidates?.[0]?.content?.parts;
+    if (parts) {
+      for (const part of parts) {
+        if (part.inlineData && part.inlineData.data) {
+          return part.inlineData.data;
+        }
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error("Code Blueprint failed:", error);
+    throw error;
+  }
+}
+
+export async function auditCode(code: string): Promise<CodeAudit | null> {
+    const ai = getAiClient();
+    const snippet = code.slice(0, 5000);
+
+    const prompt = `
+    Perform a Security and Performance Audit on this code.
+    Return ONLY a JSON object with this exact schema:
+    {
+       "score": number (0-100),
+       "complexity": string ("Low", "Medium", "High", "Critical"),
+       "vulnerabilities": string[] (list of potential security risks),
+       "optimizations": string[] (list of performance improvements),
+       "summary": string (concise technical summary of what the code does)
+    }
+
+    CODE:
+    ${snippet}
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-pro-preview',
+            contents: { parts: [{ text: prompt }] },
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        score: { type: Type.NUMBER },
+                        complexity: { type: Type.STRING },
+                        vulnerabilities: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        optimizations: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        summary: { type: Type.STRING }
+                    }
+                }
+            }
+        });
+        
+        const text = response.text;
+        if (text) {
+            return JSON.parse(text) as CodeAudit;
+        }
+        return null;
+    } catch (error) {
+        console.error("Code Audit failed:", error);
+        return {
+            score: 0,
+            complexity: "Unknown",
+            vulnerabilities: ["Audit failed"],
+            optimizations: [],
+            summary: "Analysis failed."
+        };
+    }
 }

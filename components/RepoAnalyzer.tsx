@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { fetchRepoFileTree } from '../services/githubService';
 import { generateInfographic } from '../services/geminiService';
 import { RepoFileTree, ViewMode, RepoHistoryItem, DataFlowGraph, D3Node, D3Link } from '../types';
-import { AlertCircle, Loader2, Layers, Box, Download, Sparkles, Command, Palette, Globe, Clock, Maximize, KeyRound, Zap, Code2, ArrowRight } from 'lucide-react';
+import { AlertCircle, Loader2, Layers, Box, Download, Sparkles, Command, Palette, Globe, Clock, Maximize, KeyRound, Zap, Code2, ArrowRight, PieChart } from 'lucide-react';
 import { LoadingState } from './LoadingState';
 import ImageViewer from './ImageViewer';
 
@@ -229,6 +229,48 @@ const RepoAnalyzer: React.FC<RepoAnalyzerProps> = ({ onNavigate, history, onAddT
       setCurrentFileTree(null); 
   };
 
+  // --- Tech Stack Statistics ---
+  const techStackStats = useMemo(() => {
+    if (!currentFileTree) return [];
+    
+    const extensionMap: Record<string, string> = {
+        'ts': 'TypeScript', 'tsx': 'TypeScript', 'js': 'JavaScript', 'jsx': 'JavaScript',
+        'css': 'CSS', 'scss': 'Sass', 'html': 'HTML',
+        'json': 'JSON', 'yml': 'YAML', 'yaml': 'YAML',
+        'py': 'Python', 'go': 'Go', 'rs': 'Rust', 'java': 'Java',
+        'c': 'C', 'cpp': 'C++', 'cs': 'C#', 'php': 'PHP', 'rb': 'Ruby'
+    };
+    
+    const stats: Record<string, number> = {};
+    let total = 0;
+
+    currentFileTree.forEach(file => {
+        const ext = file.path.split('.').pop()?.toLowerCase();
+        if (ext && extensionMap[ext]) {
+            const lang = extensionMap[ext];
+            stats[lang] = (stats[lang] || 0) + 1;
+            total++;
+        }
+    });
+
+    return Object.entries(stats)
+        .map(([lang, count]) => ({ lang, count, percent: (count / total) * 100 }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5); // Top 5
+  }, [currentFileTree]);
+
+  // Color mapping for languages
+  const getLangColor = (lang: string) => {
+      const colors: Record<string, string> = {
+          'TypeScript': 'bg-blue-500', 'JavaScript': 'bg-yellow-400',
+          'CSS': 'bg-pink-500', 'Sass': 'bg-pink-400', 'HTML': 'bg-orange-500',
+          'JSON': 'bg-slate-400', 'YAML': 'bg-slate-400',
+          'Python': 'bg-green-500', 'Go': 'bg-cyan-500', 'Rust': 'bg-red-500',
+          'Java': 'bg-orange-600', 'C': 'bg-slate-500', 'C++': 'bg-blue-700'
+      };
+      return colors[lang] || 'bg-indigo-500';
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-10 mb-20">
       
@@ -354,6 +396,34 @@ const RepoAnalyzer: React.FC<RepoAnalyzerProps> = ({ onNavigate, history, onAddT
       {infographicData && !loading && (
         <div className="animate-in fade-in slide-in-from-bottom-8 duration-1000">
           
+          {/* Tech Stack Holograph - Only show if we have fresh tree data */}
+          {techStackStats.length > 0 && (
+              <div className="mb-6 glass-panel p-4 rounded-xl border border-indigo-500/10 flex items-center gap-4 overflow-hidden relative">
+                  <div className="absolute inset-0 bg-gradient-to-r from-indigo-900/20 to-transparent pointer-events-none"></div>
+                  <div className="flex items-center gap-2 text-indigo-400 font-orbitron text-xs uppercase tracking-widest shrink-0 relative z-10">
+                      <PieChart className="w-4 h-4" /> Code_DNA
+                  </div>
+                  <div className="flex-1 flex gap-1 h-2 rounded-full overflow-hidden bg-slate-900/50 relative z-10">
+                      {techStackStats.map((stat, idx) => (
+                          <div 
+                              key={stat.lang} 
+                              style={{ width: `${stat.percent}%` }} 
+                              className={`${getLangColor(stat.lang)} h-full`} 
+                              title={`${stat.lang}: ${Math.round(stat.percent)}%`}
+                          />
+                      ))}
+                  </div>
+                  <div className="flex gap-3 text-[10px] font-mono text-slate-400 shrink-0 relative z-10">
+                       {techStackStats.slice(0, 3).map(stat => (
+                           <div key={stat.lang} className="flex items-center gap-1.5">
+                               <div className={`w-1.5 h-1.5 rounded-full ${getLangColor(stat.lang)}`}></div>
+                               {stat.lang} <span className="opacity-50">{Math.round(stat.percent)}%</span>
+                           </div>
+                       ))}
+                  </div>
+              </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* 2D Infographic Card */}
               <div className="glass-panel rounded-3xl p-1.5 border border-indigo-500/20 shadow-[0_0_30px_rgba(99,102,241,0.1)]">

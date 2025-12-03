@@ -5,12 +5,12 @@
 
 import React, { useState, useEffect } from 'react';
 import RepoAnalyzer from './components/RepoAnalyzer';
-import ArticleToInfographic from './components/ArticleToInfographic';
 import Home from './components/Home';
 import DevStudio from './components/DevStudio';
+import CodeXRay from './components/CodeXRay';
 import ApiKeyModal from './components/ApiKeyModal';
-import { ViewMode, RepoHistoryItem, ArticleHistoryItem, DevStudioState } from './types';
-import { Github, GitBranch, FileText, Home as HomeIcon, CreditCard, Flame } from 'lucide-react';
+import { ViewMode, RepoHistoryItem, DevStudioState } from './types';
+import { Github, GitBranch, Home as HomeIcon, CreditCard, Flame, Scan } from 'lucide-react';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewMode>(ViewMode.HOME);
@@ -19,7 +19,6 @@ const App: React.FC = () => {
   
   // Lifted History State for Persistence
   const [repoHistory, setRepoHistory] = useState<RepoHistoryItem[]>([]);
-  const [articleHistory, setArticleHistory] = useState<ArticleHistoryItem[]>([]);
   
   // Dev Studio State
   const [devStudioData, setDevStudioData] = useState<DevStudioState | null>(null);
@@ -46,10 +45,6 @@ const App: React.FC = () => {
 
   const handleAddRepoHistory = (item: RepoHistoryItem) => {
     setRepoHistory(prev => [item, ...prev]);
-  };
-
-  const handleAddArticleHistory = (item: ArticleHistoryItem) => {
-    setArticleHistory(prev => [item, ...prev]);
   };
 
   if (checkingKey) {
@@ -124,16 +119,17 @@ const App: React.FC = () => {
                 <GitBranch className={`w-4 h-4 ${(currentView === ViewMode.REPO_ANALYZER || currentView === ViewMode.DEV_STUDIO) ? 'text-indigo-400' : ''}`} />
                 <span className="hidden sm:inline">GitFlow</span>
                 </button>
+                <div className="w-px h-6 bg-white/10 my-auto mx-1"></div>
                 <button
-                onClick={() => setCurrentView(ViewMode.ARTICLE_INFOGRAPHIC)}
+                onClick={() => setCurrentView(ViewMode.CODE_XRAY)}
                 className={`relative flex items-center gap-2 px-4 md:px-6 py-2 md:py-2.5 rounded-full font-bold text-sm transition-all duration-300 font-orbitron tracking-wide uppercase ${
-                    currentView === ViewMode.ARTICLE_INFOGRAPHIC
+                    currentView === ViewMode.CODE_XRAY
                     ? 'text-white bg-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] border border-white/10'
                     : 'text-slate-500 hover:text-white'
                 }`}
                 >
-                <FileText className={`w-4 h-4 ${currentView === ViewMode.ARTICLE_INFOGRAPHIC ? 'text-orange-400' : ''}`} />
-                <span className="hidden sm:inline">SiteSketch</span>
+                <Scan className={`w-4 h-4 ${currentView === ViewMode.CODE_XRAY ? 'text-emerald-400' : ''}`} />
+                <span className="hidden sm:inline">Code X-Ray</span>
                 </button>
             </div>
             </div>
@@ -160,12 +156,9 @@ const App: React.FC = () => {
                     />
                 </div>
             )}
-            {currentView === ViewMode.ARTICLE_INFOGRAPHIC && (
-                <div className="animate-in fade-in-30 slide-in-from-bottom-4 duration-500 ease-out">
-                    <ArticleToInfographic 
-                        history={articleHistory} 
-                        onAddToHistory={handleAddArticleHistory}
-                    />
+            {currentView === ViewMode.CODE_XRAY && (
+                <div className="animate-in fade-in-30 slide-in-from-bottom-4 duration-500 ease-out h-full">
+                    <CodeXRay />
                 </div>
             )}
         </div>

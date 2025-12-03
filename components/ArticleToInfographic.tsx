@@ -1,4 +1,3 @@
-
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -7,7 +6,7 @@
 import React, { useState } from 'react';
 import { generateArticleInfographic } from '../services/geminiService';
 import { Citation, ArticleHistoryItem } from '../types';
-import { Link, Loader2, Download, Sparkles, AlertCircle, Palette, Globe, ExternalLink, BookOpen, Clock, Maximize } from 'lucide-react';
+import { Link, Loader2, Download, Sparkles, AlertCircle, Palette, Globe, ExternalLink, BookOpen, Clock, Maximize, FileText } from 'lucide-react';
 import { LoadingState } from './LoadingState';
 import ImageViewer from './ImageViewer';
 
@@ -50,13 +49,14 @@ const ArticleToInfographic: React.FC<ArticleToInfographicProps> = ({ history, on
   const [loading, setLoading] = useState(false);
   const [imageData, setImageData] = useState<string | null>(null);
   const [citations, setCitations] = useState<Citation[]>([]);
+  const [summary, setSummary] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [loadingStage, setLoadingStage] = useState('');
   
   // Viewer State
   const [fullScreenImage, setFullScreenImage] = useState<{src: string, alt: string} | null>(null);
 
-  const addToHistory = (url: string, image: string, cites: Citation[]) => {
+  const addToHistory = (url: string, image: string, cites: Citation[], sum: string) => {
       let title = url;
       try { title = new URL(url).hostname; } catch(e) {}
       
@@ -66,6 +66,7 @@ const ArticleToInfographic: React.FC<ArticleToInfographicProps> = ({ history, on
           url,
           imageData: image,
           citations: cites,
+          summary: sum,
           date: new Date()
       };
       onAddToHistory(newItem);
@@ -76,6 +77,7 @@ const ArticleToInfographic: React.FC<ArticleToInfographicProps> = ({ history, on
       setUrlInput(item.url);
       setImageData(item.imageData);
       setCitations(item.citations);
+      setSummary(item.summary || "");
   };
 
   const handleGenerate = async (e: React.FormEvent) => {
@@ -89,18 +91,20 @@ const ArticleToInfographic: React.FC<ArticleToInfographicProps> = ({ history, on
     setError(null);
     setImageData(null);
     setCitations([]);
+    setSummary('');
     setLoadingStage('INITIALIZING...');
 
     try {
       const styleToUse = selectedStyle === 'Custom' ? customStyle : selectedStyle;
-      const { imageData: resultImage, citations: resultCitations } = await generateArticleInfographic(urlInput, styleToUse, (stage) => {
+      const { imageData: resultImage, citations: resultCitations, summary: resultSummary } = await generateArticleInfographic(urlInput, styleToUse, (stage) => {
           setLoadingStage(stage);
       }, selectedLanguage);
       
       if (resultImage) {
           setImageData(resultImage);
           setCitations(resultCitations);
-          addToHistory(urlInput, resultImage, resultCitations);
+          setSummary(resultSummary);
+          addToHistory(urlInput, resultImage, resultCitations, resultSummary);
       } else {
           throw new Error("Failed to generate infographic image. The URL might be inaccessible.");
       }
@@ -236,85 +240,82 @@ const ArticleToInfographic: React.FC<ArticleToInfographicProps> = ({ history, on
 
       {/* Result Section */}
       {imageData && !loading && (
-        <div className="glass-panel rounded-3xl p-1.5 animate-in fade-in slide-in-from-bottom-8 duration-1000 border border-orange-500/20 shadow-[0_0_30px_rgba(234,88,12,0.1)]">
-            <div className="px-6 py-4 flex items-center justify-between border-b border-white/5 mb-1.5 bg-slate-900/30 rounded-t-2xl">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2 font-orbitron uppercase tracking-wider">
-                  <Sparkles className="w-4 h-4 text-orange-400" /> Output_Sketch
-                </h3>
-                <div className="flex items-center gap-2">
-                    <button 
-                        onClick={() => setFullScreenImage({src: `data:image/png;base64,${imageData}`, alt: "Article Sketch"})}
-                        className="text-xs flex items-center gap-2 text-slate-400 hover:text-white transition-colors font-mono p-1.5 rounded-lg hover:bg-white/10"
-                        title="Full Screen"
-                    >
-                        <Maximize className="w-4 h-4" />
-                    </button>
-                    <a href={`data:image/png;base64,${imageData}`} download="site-sketch.png" className="text-xs flex items-center gap-2 text-orange-300 hover:text-orange-200 transition-colors font-mono bg-orange-500/10 px-4 py-2 rounded-xl border border-orange-500/20 font-bold uppercase tracking-wider">
-                        <Download className="w-4 h-4" /> DOWNLOAD_PNG
-                    </a>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-8 duration-1000">
+            {/* Image Panel */}
+            <div className="lg:col-span-2 glass-panel rounded-3xl p-1.5 border border-orange-500/20 shadow-[0_0_30px_rgba(234,88,12,0.1)]">
+                <div className="px-6 py-4 flex items-center justify-between border-b border-white/5 mb-1.5 bg-slate-900/30 rounded-t-2xl">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2 font-orbitron uppercase tracking-wider">
+                    <Sparkles className="w-4 h-4 text-orange-400" /> Output_Sketch
+                    </h3>
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={() => setFullScreenImage({src: `data:image/png;base64,${imageData}`, alt: "Article Sketch"})}
+                            className="text-xs flex items-center gap-2 text-slate-400 hover:text-white transition-colors font-mono p-1.5 rounded-lg hover:bg-white/10"
+                            title="Full Screen"
+                        >
+                            <Maximize className="w-4 h-4" />
+                        </button>
+                        <a href={`data:image/png;base64,${imageData}`} download="site-sketch.png" className="text-xs flex items-center gap-2 text-orange-300 hover:text-orange-200 transition-colors font-mono bg-orange-500/10 px-4 py-2 rounded-xl border border-orange-500/20 font-bold uppercase tracking-wider">
+                            <Download className="w-4 h-4" /> PNG
+                        </a>
+                    </div>
                 </div>
-            </div>
-            <div className="rounded-2xl overflow-hidden bg-[#eef8fe] relative group">
-                 {selectedStyle === "Dark Mode Tech" && <div className="absolute inset-0 bg-slate-950 pointer-events-none mix-blend-multiply" />}
-                <div className="absolute inset-0 bg-slate-950/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-                <img src={`data:image/png;base64,${imageData}`} alt="Generated Infographic" className="w-full h-auto object-contain max-h-[800px] mx-auto relative z-10" />
+                <div className="rounded-2xl overflow-hidden bg-[#eef8fe] relative group">
+                    {selectedStyle === "Dark Mode Tech" && <div className="absolute inset-0 bg-slate-950 pointer-events-none mix-blend-multiply" />}
+                    <div className="absolute inset-0 bg-slate-950/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                    <img src={`data:image/png;base64,${imageData}`} alt="Generated Infographic" className="w-full h-auto object-contain max-h-[800px] mx-auto relative z-10" />
+                </div>
             </div>
 
-             {/* Featured Citations Section */}
-            {citations.length > 0 && (
-                <div className="px-6 py-8 border-t border-white/5 bg-slate-900/30 rounded-b-2xl">
-                    <div className="flex items-center gap-3 mb-5">
-                        <div className="p-2 bg-orange-500/10 rounded-lg border border-orange-500/20">
-                            <BookOpen className="w-4 h-4 text-orange-400" />
-                        </div>
-                        <div>
-                            <h4 className="text-sm font-bold text-white tracking-wide font-orbitron uppercase">
-                                Grounding Sources
-                            </h4>
-                            <p className="text-[10px] text-slate-500 font-mono">Verified citations from analysis</p>
-                        </div>
+            {/* Executive Brief & Citations Column */}
+            <div className="space-y-6">
+                
+                {/* Executive Brief */}
+                {summary && (
+                    <div className="glass-panel rounded-2xl p-6 border border-white/10 flex flex-col h-fit">
+                         <div className="flex items-center gap-2 mb-4 text-orange-400">
+                             <FileText className="w-4 h-4" />
+                             <h4 className="text-xs font-bold font-orbitron uppercase tracking-widest">Executive Brief</h4>
+                         </div>
+                         <div className="text-sm text-slate-300 font-mono whitespace-pre-wrap leading-relaxed max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                             {summary}
+                         </div>
                     </div>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {citations.map((cite, idx) => {
-                            let hostname = cite.uri;
-                            try {
-                                hostname = new URL(cite.uri).hostname;
-                            } catch (e) {}
-                            
-                            return (
-                                <a 
-                                    key={idx} 
-                                    href={cite.uri} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="flex flex-col justify-between p-4 bg-slate-950/50 hover:bg-orange-500/5 border border-white/5 hover:border-orange-500/30 rounded-xl transition-all group relative overflow-hidden h-full"
-                                    title={cite.title || cite.uri}
-                                >
-                                    <div className="flex items-start gap-3 mb-3">
-                                         <div className="flex-shrink-0 w-8 h-8 bg-white/5 rounded-lg flex items-center justify-center text-slate-500 group-hover:text-orange-400 transition-colors border border-white/5">
-                                            <Globe className="w-4 h-4" />
+                )}
+
+                {/* Citations */}
+                {citations.length > 0 && (
+                    <div className="glass-panel rounded-2xl p-6 border border-white/10 h-fit">
+                        <div className="flex items-center gap-2 mb-4 text-indigo-400">
+                            <BookOpen className="w-4 h-4" />
+                            <h4 className="text-xs font-bold font-orbitron uppercase tracking-widest">Grounding</h4>
+                        </div>
+                        <div className="space-y-3">
+                            {citations.slice(0, 5).map((cite, idx) => {
+                                let hostname = cite.uri;
+                                try { hostname = new URL(cite.uri).hostname; } catch (e) {}
+                                return (
+                                    <a 
+                                        key={idx} 
+                                        href={cite.uri} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-3 p-3 bg-slate-950/40 hover:bg-white/5 rounded-xl border border-white/5 hover:border-orange-500/30 transition-all group"
+                                    >
+                                        <div className="w-6 h-6 rounded-full bg-white/5 flex items-center justify-center shrink-0 text-slate-500 group-hover:text-orange-400">
+                                            <Globe className="w-3 h-3" />
                                         </div>
                                         <div className="min-w-0">
-                                            <p className="text-sm font-bold text-slate-200 group-hover:text-orange-100 line-clamp-2 leading-snug transition-colors">
-                                                {cite.title || "Web Source"}
-                                            </p>
-                                            <p className="text-[10px] text-slate-500 truncate font-mono mt-1 group-hover:text-orange-400/70 transition-colors">
-                                                {hostname}
-                                            </p>
+                                            <p className="text-xs font-bold text-slate-300 truncate group-hover:text-white">{cite.title || "Source"}</p>
+                                            <p className="text-[10px] text-slate-500 truncate font-mono">{hostname}</p>
                                         </div>
-                                    </div>
-                                    
-                                    <div className="flex items-center justify-between mt-auto pt-3 border-t border-white/5 group-hover:border-orange-500/10 transition-colors">
-                                        <span className="text-[10px] text-slate-600 font-mono uppercase tracking-wider group-hover:text-orange-500/50">Verified Link</span>
-                                        <ExternalLink className="w-3 h-3 text-slate-600 group-hover:text-orange-400 transition-all transform group-hover:translate-x-1" />
-                                    </div>
-                                </a>
-                            );
-                        })}
+                                    </a>
+                                )
+                            })}
+                        </div>
                     </div>
-                </div>
-            )}
+                )}
+            </div>
         </div>
       )}
       

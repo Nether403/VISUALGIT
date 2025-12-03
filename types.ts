@@ -8,8 +8,8 @@ import { SimulationNodeDatum, SimulationLinkDatum } from 'd3';
 export enum ViewMode {
   HOME = 'HOME',
   REPO_ANALYZER = 'REPO_ANALYZER',
-  ARTICLE_INFOGRAPHIC = 'ARTICLE_INFOGRAPHIC',
-  DEV_STUDIO = 'DEV_STUDIO'
+  DEV_STUDIO = 'DEV_STUDIO',
+  CODE_XRAY = 'CODE_XRAY'
 }
 
 export interface D3Node extends SimulationNodeDatum {
@@ -44,11 +44,6 @@ export interface DevStudioState {
   graphData: DataFlowGraph;
 }
 
-export interface Citation {
-    uri: string;
-    title: string;
-}
-
 export interface RepoHistoryItem {
   id: string;
   repoName: string;
@@ -58,13 +53,27 @@ export interface RepoHistoryItem {
   date: Date;
 }
 
+export interface Citation {
+  uri: string;
+  title?: string;
+}
+
 export interface ArticleHistoryItem {
-    id: string;
-    title: string;
-    url: string;
-    imageData: string;
-    citations: Citation[];
-    date: Date;
+  id: string;
+  title: string;
+  url: string;
+  imageData: string;
+  citations: Citation[];
+  summary: string;
+  date: Date;
+}
+
+export interface CodeAudit {
+  score: number;
+  complexity: string;
+  vulnerabilities: string[];
+  optimizations: string[];
+  summary: string;
 }
 
 declare global {
